@@ -11,16 +11,19 @@ namespace Server
         {
             var request = reader.ReadHeader();
             writed = 0;
+            bool ignoreDuplicates;
 
             switch (request.Code)
             {
                 case MessageCode.SingleRequest:
-                    writed = CreateAndWriteResponse(writer, request.Code);
+                    ignoreDuplicates = reader.ReadBool();
+                    writed = CreateAndWriteResponse(writer, request.Code, ignoreDuplicates);
                     return;
 
                 case MessageCode.WatchRequest:
-                    var periodTicks = reader.ReadInt64();
-                    SetNotifyMode(TimeSpan.FromTicks(periodTicks), () => CreateAndWriteResponse(GetWriter(), request.Code));
+                    var period = TimeSpan.FromTicks(reader.ReadInt64());
+                    ignoreDuplicates = reader.ReadBool();
+                    SetNotifyMode(period, () => CreateAndWriteResponse(GetWriter(), request.Code, ignoreDuplicates));
                     return;
 
                 default:
@@ -29,6 +32,6 @@ namespace Server
             }
         }
 
-        protected abstract int CreateAndWriteResponse(MessageWriter writer, byte code);
+        protected abstract int CreateAndWriteResponse(MessageWriter writer, byte code, bool dontSendIfSame);
     }
 }

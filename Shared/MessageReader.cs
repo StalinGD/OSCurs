@@ -39,6 +39,14 @@ namespace Shared
             return value;
         }
 
+        public bool ReadBool()
+        {
+            var len = 1;
+            var value = GetNextBytes(len)[0] > 0;
+            currentPosition += len;
+            return value;
+        }
+
         public string ReadString()
         {
             // null-terminated utf-8

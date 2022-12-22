@@ -22,14 +22,19 @@ namespace Client
             var watchServerOption = new Option<bool>
                 ("--watch-server", "Force server to send updates continiusly");
             var watchPeriodOption = new Option<double>(
-                "--watch-period", 
-                description: "Period in seconds of sending updates via --watch-client or --watch-server", 
-                getDefaultValue: () => 1);
-            watchPeriodOption.ArgumentHelpName = "seconds";
+                "--watch-period",
+                description: "Period in seconds of sending updates via --watch-client or --watch-server",
+                getDefaultValue: () => 1)
+            {
+                ArgumentHelpName = "seconds"
+            };
+            var ignoreDuplicatesOption = new Option<bool>
+                ("--ignore-duplicates", "When watch is enabled, sends back only updated info");
 
             rootCommand.AddOption(watchClientOption);
             rootCommand.AddOption(watchServerOption);
             rootCommand.AddOption(watchPeriodOption);
+            rootCommand.AddOption(ignoreDuplicatesOption);
 
             var addressArgument = new Argument<IPAddress>(
                 "address",
@@ -53,17 +58,31 @@ namespace Client
 
 
 
-            server1Command.SetHandler(async (address, port, watchClient, watchServer, watchPeriodSeconds) =>
+            server1Command.SetHandler(
+                async (address, port, watchClient, watchServer, watchPeriodSeconds, ignoreDuplicates) =>
             {
                 var watchPeriod = TimeSpan.FromSeconds(watchPeriodSeconds);
-                await Run(address, port, watchClient, watchServer, watchPeriod, ReadServer1Message);
-            }, addressArgument, server1PortArgument, watchClientOption, watchServerOption, watchPeriodOption);
+                await Run(address, port, watchClient, watchServer, watchPeriod, ignoreDuplicates, ReadServer1Message);
+            }, 
+            addressArgument, 
+            server1PortArgument, 
+            watchClientOption, 
+            watchServerOption, 
+            watchPeriodOption,
+            ignoreDuplicatesOption);
 
-            server2Command.SetHandler(async (address, port, watchClient, watchServer, watchPeriodSeconds) =>
+            server2Command.SetHandler(
+                async (address, port, watchClient, watchServer, watchPeriodSeconds, ignoreDuplicates) =>
             {
                 var watchPeriod = TimeSpan.FromSeconds(watchPeriodSeconds);
-                await Run(address, port, watchClient, watchServer, watchPeriod, ReadServer2Message);
-            }, addressArgument, server2PortArgument, watchClientOption, watchServerOption, watchPeriodOption);
+                await Run(address, port, watchClient, watchServer, watchPeriod, ignoreDuplicates, ReadServer2Message);
+            }, 
+            addressArgument, 
+            server2PortArgument, 
+            watchClientOption, 
+            watchServerOption, 
+            watchPeriodOption,
+            ignoreDuplicatesOption);
 
 
             await rootCommand.InvokeAsync(args);
@@ -98,7 +117,7 @@ namespace Client
         }
 
         private static async Task Run
-            (IPAddress address, int port, bool watchClient, bool watchServer, TimeSpan watchPeriod, Action<Client> messageHandler)
+            (IPAddress address, int port, bool watchClient, bool watchServer, TimeSpan watchPeriod, bool ignoreDuplicates, Action<Client> messageHandler)
         {
             var endpoint = new IPEndPoint(address, port);
 
@@ -109,11 +128,11 @@ namespace Client
             {
                 if (watchClient)
                 {
-                    await WatchClientwise(client, watchPeriod, messageHandler);
+                    await WatchClientwise(client, watchPeriod, ignoreDuplicates, messageHandler);
                 }
                 else if (watchServer)
                 {
-                    await WatchServerwise(client, watchPeriod, messageHandler);
+                    await WatchServerwise(client, watchPeriod, ignoreDuplicates, messageHandler);
                 }
                 else
                 {
@@ -130,12 +149,19 @@ namespace Client
 
 
 
-        private static int WriteRequest(byte code, Client client, TimeSpan watchPeriod = default)
+        private static int WriteRequest(byte code, Client client, TimeSpan watchPeriod = default, bool ignoreDuplicates = false)
         {
             var writer = client.GetWriter();
 
             writer.Write(new MessageHeader(code, DateTime.Now));
-            writer.Write(watchPeriod.Ticks);
+            if (watchPeriod.Ticks > 0)
+            {
+                writer.Write(watchPeriod.Ticks);
+            }
+            if (ignoreDuplicates)
+            {
+                writer.Write(ignoreDuplicates);
+            }
 
             return writer.CurrentPosition;
         }
@@ -165,27 +191,27 @@ namespace Client
         }
 
 
-        private static async Task SendSingleRequest(Client client, Action<Client> messageHandler)
+        private static async Task SendSingleRequest(Client client, Action<Client> messageHandler, bool ignoreDuplicates = false)
         {
-            var length = WriteRequest(MessageCode.SingleRequest, client);
+            var length = WriteRequest(MessageCode.SingleRequest, client, ignoreDuplicates: ignoreDuplicates);
             await client.FlushAsync(length);
             await client.ReceiveAsync();
             messageHandler(client);
         }
 
-        private static async Task WatchClientwise(Client client, TimeSpan watchPeriod, Action<Client> messageHandler)
+        private static async Task WatchClientwise(Client client, TimeSpan watchPeriod, bool ignoreDuplicates, Action<Client> messageHandler)
         {
             while (true)
             {
-                await SendSingleRequest(client, messageHandler);
+                await SendSingleRequest(client, messageHandler, ignoreDuplicates);
 
                 await Task.Delay(watchPeriod);
             }
         }
 
-        private static async Task WatchServerwise(Client client, TimeSpan watchPeriod, Action<Client> messageHandler)
+        private static async Task WatchServerwise(Client client, TimeSpan watchPeriod, bool ignoreDuplicates, Action<Client> messageHandler)
         {
-            var length = WriteRequest(MessageCode.WatchRequest, client, watchPeriod);
+            var length = WriteRequest(MessageCode.WatchRequest, client, watchPeriod, ignoreDuplicates);
             await client.FlushAsync(length);
 
             while (true)
