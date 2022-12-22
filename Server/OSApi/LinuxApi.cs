@@ -14,7 +14,7 @@ namespace Server.OSApi
         {
             var info = new SystemInfo();
             _ = SyscallUname(ref info);
-            return info.machine.ToString();
+            return info.machine;
         }
 
         public override int GetLogicalCoresCount()
@@ -27,10 +27,27 @@ namespace Server.OSApi
             var lines = File.ReadAllLines("/proc/cpuinfo");
 
             var maxCoreId = 0;
+            var coreIdEntryCount = 0;
 
             foreach (var line in lines)
             {
                 if (line.StartsWith("core id"))
+                {
+                    var semicolonIndex = line.LastIndexOf(':');
+                    var coreId = int.Parse(line.AsSpan()[(semicolonIndex + 1)..].Trim());
+                    maxCoreId = Math.Max(maxCoreId, coreId);
+                    coreIdEntryCount++;
+                }
+            }
+
+            if (coreIdEntryCount > 0)
+            {
+                return maxCoreId + 1;
+            }
+
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("processor"))
                 {
                     var semicolonIndex = line.LastIndexOf(':');
                     var coreId = int.Parse(line.AsSpan()[(semicolonIndex + 1)..].Trim());
@@ -71,12 +88,18 @@ namespace Server.OSApi
 
         private struct SystemInfo
         {
-            public StringBuilder sysname;
-            public StringBuilder nodename;
-            public StringBuilder release;
-            public StringBuilder version;
-            public StringBuilder machine;
-            public StringBuilder domainName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 65)]
+            public string sysname;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 65)]
+            public string nodename;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 65)]
+            public string release;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 65)]
+            public string version;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 65)]
+            public string machine;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 65)]
+            public string domainName;
         }
     }
 }
