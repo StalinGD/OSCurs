@@ -8,9 +8,6 @@ namespace Client
 {
     internal class Program
     {
-        private static TimeSpan watchPeriod = TimeSpan.FromSeconds(1);
-
-
         private static async Task Main(string[] args)
         {
             var endpointString = "127.0.0.1:4040";
@@ -22,30 +19,31 @@ namespace Client
 
             var watchClient = false;
             var watchServer = false;
-            Func<Socket, ArraySegment<byte>, Task> handler = SendSingleRequest;
+            var watchPeriod = TimeSpan.FromSeconds(1);
 
-            if (watchClient)
-            {
-                handler = WatchClientwise;
-            }
-            else if (watchServer) 
-            {
-                handler = WatchServerwise;
-            }
 
-            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            var client = await ConnectAsync(endpoint);
+            if (client == null) return;
+
             try
             {
-                await socket.ConnectAsync(endpoint);
-                Out("Connected");
-
-                var buffer = new byte[1024];
-
-                await handler(socket, buffer);
+                if (watchClient)
+                {
+                    await WatchClientwise(client, watchPeriod);
+                }
+                else if (watchServer)
+                {
+                    await WatchServerwise(client, watchPeriod);
+                }
+                else
+                {
+                    await SendSingleRequest(client);
+                }
             }
             catch (SocketException ex)
             {
                 Error(ex.Message);
+                return;
             }
 
             Console.ReadKey();
@@ -61,11 +59,27 @@ namespace Client
             Console.WriteLine(message);
         }
 
-
-
-        private static int WriteRequest(byte code, Span<byte> bytes, TimeSpan watchPeriod = default)
+        private static async Task<Client> ConnectAsync(IPEndPoint endpoint)
         {
-            var writer = new MessageWriter(bytes);
+            var client = new Client();
+            try
+            {
+                await client.ConnectAsync(endpoint);
+            }
+            catch (SocketException ex)
+            {
+                Error(ex.Message);
+                return null;
+            }
+            Out("Connected");
+            return client;
+        }
+
+
+
+        private static int WriteRequest(byte code, Client client, TimeSpan watchPeriod = default)
+        {
+            var writer = client.GetWriter();
 
             writer.Write(new MessageHeader(code, DateTime.Now));
             writer.Write(watchPeriod.Ticks);
@@ -73,9 +87,9 @@ namespace Client
             return writer.CurrentPosition;
         }
 
-        private static void ReadMessage(Span<byte> bytes)
+        private static void ReadMessage(Client client)
         {
-            var reader = new MessageReader(bytes);
+            var reader = client.GetReader();
 
             var header = reader.ReadHeader();
 
@@ -86,44 +100,33 @@ namespace Client
         }
 
 
-        private static async Task SendSingleRequest(Socket socket, ArraySegment<byte> buffer)
+        private static async Task SendSingleRequest(Client client)
         {
-            var length = WriteRequest(MessageCode.SingleRequest, buffer);
-
-            _ = await socket.SendAsync(buffer[..length], SocketFlags.None);
-
-            var received = await socket.ReceiveAsync(buffer, SocketFlags.None);
-
-            ReadMessage(buffer.AsSpan()[..received]);
+            var length = WriteRequest(MessageCode.SingleRequest, client);
+            await client.FlushAsync(length);
+            await client.ReceiveAsync();
+            ReadMessage(client);
         }
 
-        private static async Task WatchClientwise(Socket socket, ArraySegment<byte> buffer)
+        private static async Task WatchClientwise(Client client, TimeSpan watchPeriod)
         {
             while (true)
             {
-                var length = WriteRequest(MessageCode.SingleRequest, buffer);
-
-                _ = await socket.SendAsync(buffer[..length], SocketFlags.None);
-
-                var received = await socket.ReceiveAsync(buffer, SocketFlags.None);
-
-                ReadMessage(buffer.AsSpan()[..received]);
+                await SendSingleRequest(client);
 
                 await Task.Delay(watchPeriod);
             }
         }
 
-
-        private static async Task WatchServerwise(Socket socket, ArraySegment<byte> buffer)
+        private static async Task WatchServerwise(Client client, TimeSpan watchPeriod)
         {
-            var length = WriteRequest(MessageCode.WatchRequest, buffer, watchPeriod);
-            _ = await socket.SendAsync(buffer[..length], SocketFlags.None);
+            var length = WriteRequest(MessageCode.WatchRequest, client, watchPeriod);
+            await client.FlushAsync(length);
 
             while (true)
             {
-                var received = await socket.ReceiveAsync(buffer, SocketFlags.None);
-
-                ReadMessage(buffer.AsSpan()[..received]);
+                await client.ReceiveAsync();
+                ReadMessage(client);
             }
         }
     }

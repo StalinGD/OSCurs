@@ -72,19 +72,19 @@ namespace Server
 
             HandleRequest(GetReader(), GetWriter(), out var toWrite);
 
-            await Flush(toWrite);
+            await FlushAsync(toWrite);
         }
 
         private async Task NotifyAsync(TimeSpan period, Func<int> writeFunc)
         {
             var toWrite = writeFunc();
 
-            await Flush(toWrite);
+            await FlushAsync(toWrite);
 
             await Task.Delay(period);
         }
 
-        private async Task Flush(int length)
+        private async Task FlushAsync(int length)
         {
             if (length > 0)
             {
