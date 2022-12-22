@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Text;
+using System.Threading;
 using System.CommandLine;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -72,6 +72,11 @@ namespace Server
         {
             port = ResolvePort(port, "Port1", DefaultPort1);
 
+            if (CheckForOtherServerInstance(1))
+            {
+                throw new InvalidOperationException("Server instance already started");
+            }
+
             return new Server(
                 () => new Server1ClientHandler(loggerFactory.CreateLogger<Server1ClientHandler>()),
                 port,
@@ -83,6 +88,11 @@ namespace Server
         private static Server CreateServer2(int port)
         {
             port = ResolvePort(port, "Port2", DefaultPort2);
+
+            if (CheckForOtherServerInstance(2))
+            {
+                throw new InvalidOperationException("Server instance already started");
+            }
 
             return new Server(
                 () => new Server2ClientHandler(loggerFactory.CreateLogger<Server2ClientHandler>()),
@@ -101,6 +111,19 @@ namespace Server
             }
 
             return config.GetValue("Port", config.GetValue(defaultConfigEntry, defaultPort));
+        }
+
+        private static bool CheckForOtherServerInstance(int serverType)
+        {
+            var name = $"Global\\OSCurs_Server{serverType}";
+            if (!Mutex.TryOpenExisting(name, out var mutex))
+            {
+                _ = new Mutex(true, name);
+
+                return false;
+            }
+
+            return !mutex.WaitOne(0);
         }
     }
 }
