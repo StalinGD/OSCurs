@@ -1,36 +1,60 @@
 ﻿using System;
 using System.Text;
-using System.Runtime.InteropServices;
+using System.CommandLine;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Shared;
-using Server.OSApi;
 
 namespace Server
 {
     internal sealed class Program
     {
+        private const int DefaultPort1 = 4040;
+        private const int DefaultPort2 = 4041;
+
+        private static IConfiguration config;
+        private static ILoggerFactory loggerFactory;
+
         private static async Task Main(string[] args)
         {
-            var config = BuildConfig();
+            var rootCommand = new RootCommand("Server application");
+            var server1Command = new Command("server1", "First type server");
+            rootCommand.Add(server1Command);
+            var server2Command = new Command("server2", "Second type server");
+            rootCommand.Add(server2Command);
 
-            var loggerFactory = BuildLoggerFactory(config);
+            var portOption = new Option<int>
+            (
+                aliases: new string[] { "--port", "-p" },
+                description: "Server port to listen on"
+            );
+            rootCommand.AddGlobalOption(portOption);
 
+            config = BuildConfig(args);
+            loggerFactory = BuildLoggerFactory(config);
             var logger = loggerFactory.CreateLogger<Program>();
-            logger.LogInformation($"Starting server...");
 
-            var server = new Server(
-                () => new ServerHandler1(loggerFactory.CreateLogger<ClientHandler>()), 
-                config, 
-                loggerFactory.CreateLogger<Server>());
-            await server.ListenAsync();
+            server1Command.SetHandler(async (port) =>
+            {
+                logger.LogInformation("Starting server type 1...");
+                var server = CreateServer1(port);
+                await server.ListenAsync();
+            }, portOption);
+
+            server2Command.SetHandler(async (port) =>
+            {
+                logger.LogInformation("Starting server type 2...");
+                var server = CreateServer2(port);
+                await server.ListenAsync();
+            }, portOption);
+
+            await rootCommand.InvokeAsync(args);
         }
 
-        private static IConfiguration BuildConfig()
+        private static IConfiguration BuildConfig(string[] args)
         {
             return new ConfigurationBuilder()
                 .AddJsonFile("config.json", true)
-                .AddEnvironmentVariables("OSC")
+                .AddEnvironmentVariables("OSC-")
                 .Build();
         }
 
@@ -43,45 +67,40 @@ namespace Server
                     .AddDebug();
             });
         }
-    }
 
-    class ServerHandler1 : ClientHandler
-    {
-        public ServerHandler1(ILogger logger) : base(logger)
+        private static Server CreateServer1(int port)
         {
+            port = ResolvePort(port, "Port1", DefaultPort1);
 
+            return new Server(
+                () => new Server1ClientHandler(loggerFactory.CreateLogger<Server1ClientHandler>()),
+                port,
+                config,
+                loggerFactory.CreateLogger<Server>()
+            );
         }
 
-        protected override void HandleRequest(MessageReader reader, MessageWriter writer, out int writed)
+        private static Server CreateServer2(int port)
         {
-            var request = reader.ReadHeader();
-            writed = 0;
+            port = ResolvePort(port, "Port2", DefaultPort2);
 
-            switch (request.Code)
+            return new Server(
+                () => new Server2ClientHandler(loggerFactory.CreateLogger<Server2ClientHandler>()),
+                port,
+                config,
+                loggerFactory.CreateLogger<Server>()
+            );
+        }
+
+
+        private static int ResolvePort(int commandLinePort, string defaultConfigEntry, int defaultPort)
+        {
+            if (commandLinePort > 0)
             {
-                case MessageCode.SingleRequest:
-                    writed = CreateAndWriteResponse(writer, request.Code);
-                    return;
-                case MessageCode.WatchRequest:
-                    SetNotifyMode(TimeSpan.FromSeconds(1), () => CreateAndWriteResponse(GetWriter(), request.Code));
-                    return;
-                default:
-                    Logger.LogError("Unsupported request code {Code} reseived", request.Code);
-                    return;
+                return commandLinePort;
             }
-        }
 
-        private int CreateAndWriteResponse(MessageWriter writer, byte code)
-        {
-            var header = new MessageHeader(code, DateTime.Now);
-
-            var architecture = OperatingSystemApi.Current.GetArchitecture();
-            var logicalProcessors = OperatingSystemApi.Current.GetLogicalCoresCount();
-
-            writer.Write(header);
-            writer.Write(architecture);
-            writer.Write(logicalProcessors);
-            return writer.CurrentPosition;
+            return config.GetValue("Port", config.GetValue(defaultConfigEntry, defaultPort));
         }
     }
 }

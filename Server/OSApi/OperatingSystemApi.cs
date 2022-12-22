@@ -30,7 +30,8 @@ namespace Server.OSApi
 
 
         public abstract string GetArchitecture();
-        
         public abstract int GetLogicalCoresCount();
+        public abstract int GetPhysicalCoresCount();
+        public abstract int GetProcessModulesCount();
     }
 }

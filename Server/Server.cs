@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using System.Text;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Configuration;
@@ -19,10 +17,10 @@ namespace Server
         private readonly Func<ClientHandler> handlerFactory;
         private readonly IConfiguration config;
         private readonly ILogger logger;
-        private readonly int defaultPort = 4040;
+        private readonly int port;
 
 
-        public Server(Func<ClientHandler> handlerFactory, IConfiguration config, ILogger logger)
+        public Server(Func<ClientHandler> handlerFactory, int port, IConfiguration config, ILogger logger)
         {
             if (handlerFactory == null || config == null || logger == null)
             {
@@ -32,12 +30,12 @@ namespace Server
             this.handlerFactory = handlerFactory;
             this.config = config;
             this.logger = logger;
+            this.port = port;
         }
 
 
         public async Task ListenAsync()
         {
-            var port = config.GetValue("Port", defaultPort);
             var endpoint = new IPEndPoint(IPAddress.Any, port);
 
             try
