@@ -32,6 +32,14 @@ namespace Shared
             return len;
         }
 
+        public int Write(long value)
+        {
+            _ = BitConverter.TryWriteBytes(GetNextBytes(), value);
+            var len = sizeof(long);
+            CurrentPosition += len;
+            return len;
+        }
+
         public int Write(string value)
         {
             // null-terminated utf-8

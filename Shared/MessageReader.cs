@@ -31,6 +31,14 @@ namespace Shared
             return value;
         }
 
+        public long ReadInt64()
+        {
+            var len = sizeof(long);
+            var value = BitConverter.ToInt64(GetNextBytes(len));
+            currentPosition += len;
+            return value;
+        }
+
         public string ReadString()
         {
             // null-terminated utf-8
