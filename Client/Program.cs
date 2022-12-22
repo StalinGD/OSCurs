@@ -26,7 +26,7 @@ namespace Client
                 while (true)
                 {
                     var length = 1;
-                    buffer[0] = 0x01; // REQUEST CODE
+                    buffer[0] = MessageCode.SingleRequest; // REQUEST CODE
                     _ = await socket.SendAsync(buffer[..length], SocketFlags.None);
 
                     var received = await socket.ReceiveAsync(buffer, SocketFlags.None);

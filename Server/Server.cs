@@ -14,16 +14,22 @@ namespace Server
     public sealed class Server : IDisposable
     {
         private Socket listener;
+        private int nextClientId = 0;
 
-        private readonly ServerHandler handler;
+        private readonly Func<ClientHandler> handlerFactory;
         private readonly IConfiguration config;
         private readonly ILogger logger;
         private readonly int defaultPort = 4040;
 
 
-        public Server(ServerHandler handler, IConfiguration config, ILogger logger)
+        public Server(Func<ClientHandler> handlerFactory, IConfiguration config, ILogger logger)
         {
-            this.handler = handler;
+            if (handlerFactory == null || config == null || logger == null)
+            {
+                throw new ArgumentNullException("None of the arguments should be null");
+            }
+
+            this.handlerFactory = handlerFactory;
             this.config = config;
             this.logger = logger;
         }
@@ -54,26 +60,19 @@ namespace Server
             {
                 try
                 {
-                    var client = await listener.AcceptAsync();
-                    await HandleClientAsync(client);
+                    var clientSocket = await listener.AcceptAsync();
+
+                    var id = nextClientId++;
+
+                    logger.LogInformation("Client {Id} connected", id);
+
+                    var client = handlerFactory();
+                    client.HandleClient(id, clientSocket);
                 }
                 catch (Exception e)
                 {
                     logger.LogError(e, "Exception on server listener");
                 }
-            }
-        }
-
-        private async Task HandleClientAsync(Socket client)
-        {
-            var buffer = new byte[1024];
-            while (true)
-            {
-                var received = await client.ReceiveAsync(buffer, SocketFlags.None);
-
-                handler.HandleMessage(new MessageReader(buffer.AsSpan()), new MessageWriter(buffer.AsSpan()), out var toWrite);
-
-                await client.SendAsync(buffer[..toWrite], SocketFlags.None);
             }
         }
 

@@ -18,7 +18,10 @@ namespace Server
             var logger = loggerFactory.CreateLogger<Program>();
             logger.LogInformation($"Starting server...");
 
-            var server = new Server(new ServerHandler1(), config, loggerFactory.CreateLogger<Server>());
+            var server = new Server(
+                () => new ServerHandler1(loggerFactory.CreateLogger<ClientHandler>()), 
+                config, 
+                loggerFactory.CreateLogger<Server>());
             await server.ListenAsync();
         }
 
@@ -41,13 +44,13 @@ namespace Server
         }
     }
 
-    class ServerHandler1 : ServerHandler
+    class ServerHandler1 : ClientHandler
     {
         private Func<string> architectureGetter;
         private Func<int> logicalProcessorsGetter;
 
 
-        public ServerHandler1()
+        public ServerHandler1(ILogger logger) : base(logger)
         {
             if (OperatingSystem.IsWindows())
             {
@@ -61,10 +64,28 @@ namespace Server
             }
         }
 
-        public override void HandleMessage(MessageReader reader, MessageWriter writer, out int writed)
+        protected override void HandleRequest(MessageReader reader, MessageWriter writer, out int writed)
         {
+            var request = reader.ReadHeader();
+            writed = 0;
 
-            var header = new MessageHeader(0x01, DateTime.Now);
+            switch (request.Code)
+            {
+                case MessageCode.SingleRequest:
+                    writed = CreateAndWriteResponse(writer, request.Code);
+                    return;
+                case MessageCode.WatchRequest:
+                    SetNotifyMode(TimeSpan.FromSeconds(1), () => CreateAndWriteResponse(GetWriter(), request.Code));
+                    return;
+                default:
+                    Logger.LogError("Unsupported request code {Code} reseived", request.Code);
+                    return;
+            }
+        }
+
+        private int CreateAndWriteResponse(MessageWriter writer, byte code)
+        {
+            var header = new MessageHeader(code, DateTime.Now);
 
             var architecture = architectureGetter();
             var logicalProcessors = logicalProcessorsGetter();
@@ -72,8 +93,7 @@ namespace Server
             writer.Write(header);
             writer.Write(architecture);
             writer.Write(logicalProcessors);
-
-            writed = writer.CurrentPosition;
+            return writer.CurrentPosition;
         }
 
 
