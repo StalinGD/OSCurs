@@ -53,10 +53,24 @@ namespace Server
 
         private async Task HandleClientAsync()
         {
-            while (true)
+            try
             {
-                await currentMode();
+                while (true)
+                {
+                    await currentMode();
+                }
             }
+            catch (SocketException)
+            {
+                Logger.LogInformation("Client {Id} disconnected", Id);
+                return;
+            }
+            catch (Exception e)
+            {
+                Logger.LogError(e, "Error in client handler loop");
+                Logger.LogInformation("Client {Id} disconnected", Id);
+            }
+
         }
 
         private void SetMode(Func<Task> mode)

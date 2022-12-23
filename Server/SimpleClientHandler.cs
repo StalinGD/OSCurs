@@ -13,17 +13,24 @@ namespace Server
             writed = 0;
             bool ignoreDuplicates;
 
+            Logger.LogTrace("[{ClientId}] Request {Code}", Id, request.Code);
+
             switch (request.Code)
             {
                 case MessageCode.SingleRequest:
                     ignoreDuplicates = reader.ReadBool();
+                    Logger.LogTrace("[{ClientId}] Respond SingleRequest", Id);
                     writed = CreateAndWriteResponse(writer, request.Code, ignoreDuplicates);
                     return;
 
                 case MessageCode.WatchRequest:
                     var period = TimeSpan.FromTicks(reader.ReadInt64());
                     ignoreDuplicates = reader.ReadBool();
-                    SetNotifyMode(period, () => CreateAndWriteResponse(GetWriter(), request.Code, ignoreDuplicates));
+                    SetNotifyMode(period, () => 
+                    {
+                        Logger.LogTrace("[{ClientId}] Respond WatchRequest", Id);
+                        return CreateAndWriteResponse(GetWriter(), request.Code, ignoreDuplicates);
+                    });
                     return;
 
                 default:
