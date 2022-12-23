@@ -36,10 +36,10 @@ namespace Client
             rootCommand.AddOption(watchPeriodOption);
             rootCommand.AddOption(ignoreDuplicatesOption);
 
-            var addressArgument = new Argument<IPAddress>(
+            var addressArgument = new Argument<string>(
                 "address",
-                description: "IPv4 server address",
-                getDefaultValue: () => IPAddress.Loopback);
+                description: "IPv4 server address or DNS name",
+                getDefaultValue: () => IPAddress.Loopback.ToString());
 
 
             var server1PortArgument = new Argument<int>(
@@ -59,9 +59,10 @@ namespace Client
 
 
             server1Command.SetHandler(
-                async (address, port, watchClient, watchServer, watchPeriodSeconds, ignoreDuplicates) =>
+                async (addressStr, port, watchClient, watchServer, watchPeriodSeconds, ignoreDuplicates) =>
             {
                 var watchPeriod = TimeSpan.FromSeconds(watchPeriodSeconds);
+                var address = await ResolveAddressAsync(addressStr);
                 await Run(address, port, watchClient, watchServer, watchPeriod, ignoreDuplicates, ReadServer1Message);
             }, 
             addressArgument, 
@@ -72,9 +73,10 @@ namespace Client
             ignoreDuplicatesOption);
 
             server2Command.SetHandler(
-                async (address, port, watchClient, watchServer, watchPeriodSeconds, ignoreDuplicates) =>
+                async (addressStr, port, watchClient, watchServer, watchPeriodSeconds, ignoreDuplicates) =>
             {
                 var watchPeriod = TimeSpan.FromSeconds(watchPeriodSeconds);
+                var address = await ResolveAddressAsync(addressStr);
                 await Run(address, port, watchClient, watchServer, watchPeriod, ignoreDuplicates, ReadServer2Message);
             }, 
             addressArgument, 
@@ -86,8 +88,6 @@ namespace Client
 
 
             await rootCommand.InvokeAsync(args);
-
-            Console.ReadKey();
         }
 
         public static void Error(string message)
@@ -219,6 +219,17 @@ namespace Client
                 await client.ReceiveAsync();
                 messageHandler(client);
             }
+        }
+
+        private static async Task<IPAddress> ResolveAddressAsync(string address)
+        {
+            if (IPAddress.TryParse(address, out var result))
+            {
+                return result;
+            }
+
+            var dnsEntry = await Dns.GetHostEntryAsync(address);
+            return dnsEntry?.AddressList[0];
         }
     }
 }
