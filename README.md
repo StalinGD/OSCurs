@@ -1,5 +1,7 @@
 # Exercise project for university class "Operating Systems"
 
+Client-server application via sockets
+
 ![image](https://user-images.githubusercontent.com/33173619/230896815-398181cd-b823-41ef-b713-156659a1ee48.png)
 
 ## Description
